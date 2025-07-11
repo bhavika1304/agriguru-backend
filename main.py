@@ -1,12 +1,11 @@
-from fastapi import FastAPI, UploadFile, File
+from fastapi import FastAPI
 from pydantic import BaseModel
-from services.crop import get_crop_recommendation
-from services.weather import get_weather
-# from services.market import get_market_price
-# from services.disease import detect_disease
-# from services.assistant import process_query
+import joblib, os, numpy as np
 
 app = FastAPI()
+
+model = None
+label_encoder = None
 
 class CropInput(BaseModel):
     N: float
@@ -17,29 +16,18 @@ class CropInput(BaseModel):
     ph: float
     rainfall: float
 
-@app.get("/")
-def root():
-    return {"status": "AgriGuru backend running"}
-
 @app.post("/recommend_crop")
 def recommend_crop(data: CropInput):
-    print(data)
-    return get_crop_recommendation(data.dict())
+    global model, label_encoder
+    if model is None or label_encoder is None:
+        model = joblib.load("models/crop_model.pkl")
+        label_encoder = joblib.load("models/label_encoder.pkl")
 
-@app.get("/weather")
-def weather(city: str):
-    return get_weather(city)
+    X = np.array([[data.N, data.P, data.K, data.temperature, data.humidity, data.ph, data.rainfall]])
+    crop = model.predict(X)
+    name = label_encoder.inverse_transform(crop)[0]
+    return {"recommended_crop": name}
 
-"""
-@app.get("/market_price")
-def market_price(crop: str):
-    return get_market_price(crop)
-
-@app.post("/detect_disease")
-async def detect(file: UploadFile = File(...)):
-    return await detect_disease(file)
-
-@app.post("/assistant")
-def assistant(data: dict):
-    return process_query(data["text"], data["language"])
-"""
+@app.get("/")
+def ping():
+    return {"status": "Running"}
